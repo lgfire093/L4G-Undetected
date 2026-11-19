@@ -1,0 +1,20 @@
+name = "l4g-c2-server"
+main = "index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+LATEST_VERSION = "14"
+ADMIN_TOKEN = "your-admin-token-here"
+MASTER_KEY = "your-master-key-32-chars-long!!"
+
+[[r2_buckets]]
+binding = "UPDATE_BUCKET"
+bucket_name = "l4g-updates"
+
+[[kv_namespaces]]
+binding = "CONFIG"
+id = "your-kv-namespace-id"
+
+[observability]
+enabled = true
