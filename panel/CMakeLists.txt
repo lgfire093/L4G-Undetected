@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 project(L4G_Panel VERSION 14.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,6 +8,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # MSVC specific flags
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX /O2 /MT /D_UNICODE /DUNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN")
+    # C4100/C4189/C4267/C4245 fire on the placeholder-heavy module bodies and on
+    # every Win32 size parameter. Keep /WX for truncation and lifetime classes.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100 /wd4189 /wd4267 /wd4245")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /Gy")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LTCG /OPT:REF /OPT:ICF /SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")

@@ -1,4 +1,4 @@
-#include "fingerprint_spoofer.hpp"
+﻿#include "fingerprint_spoofer.hpp"
 #include <windows.h>
 #include <wbemidl.h>
 #include <comdef.h>
@@ -7,6 +7,7 @@
 #include <string>
 #include <random>
 #include <sstream>
+#include <iomanip>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -37,9 +38,9 @@ bool FingerprintSpoofer::spoof_mac_address() {
     // Generate random MAC
     std::random_device rd;
     std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint8_t> dist(0, 255);
+    std::uniform_int_distribution<int> dist(0, 255);
     
-    uint8_t mac[6] = {0x00, 0x1A, 0x2B, dist(gen), dist(gen), dist(gen)};
+    uint8_t mac[6] = {0x00, 0x1A, 0x2B, (uint8_t)dist(gen), (uint8_t)dist(gen), (uint8_t)dist(gen)};
     // Ensure locally administered, unicast
     mac[0] = (mac[0] & 0xFE) | 0x02;
     

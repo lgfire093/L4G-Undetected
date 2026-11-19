@@ -2,11 +2,9 @@
 #include <windows.h>
 #include <vector>
 #include <mutex>
+#include "types.hpp"
 
 namespace l4g::cheat {
-
-struct Vec3 { float x, y, z; };
-struct Vec2 { float x, y; };
 
 struct AimbotConfig {
     bool enabled = false;
@@ -37,7 +35,7 @@ public:
     
 private:
     AimbotConfig config_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     
     uint64_t find_best_target(const std::vector<uint64_t>& entities, const Vec3& local_pos, const Vec3& view_angles);
     bool is_visible(uint64_t entity);

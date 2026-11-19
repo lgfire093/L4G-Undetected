@@ -1,12 +1,9 @@
 #include "crypto.hpp"
 #include <windows.h>
-#include <iphlpapi.h>
 #include <intrin.h>
 #include <random>
 #include <chrono>
 #include <algorithm>
-
-#pragma comment(lib, "iphlpapi.lib")
 
 namespace l4g::crypto {
 
@@ -31,8 +28,8 @@ std::vector<uint8_t> hkdf_sha256(const std::vector<uint8_t>& ikm, const std::vec
     size_t offset = 0;
     while (offset < length) {
         BCryptCreateHash(hAlg, &hHash, nullptr, 0, prk.data(), (ULONG)prk.size(), 0);
-        BCryptHashData(hHash, t.data(), (ULONG)t.size(), 0);
-        BCryptHashData(hHash, info.data(), (ULONG)info.size(), 0);
+        if (!t.empty()) BCryptHashData(hHash, t.data(), (ULONG)t.size(), 0);
+        if (!info.empty()) BCryptHashData(hHash, const_cast<PUCHAR>(info.data()), (ULONG)info.size(), 0);
         BCryptHashData(hHash, (PUCHAR)&counter, 1, 0);
         t.resize(32);
         BCryptFinishHash(hHash, t.data(), (ULONG)t.size(), 0);
@@ -145,7 +142,7 @@ std::vector<uint8_t> base64url_decode(const std::string& data) {
     static bool init = false;
     if (!init) {
         const char* s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        for (int i = 0; i < 64; ++i) table[(uint8_t)s[i]] = i;
+        for (int i = 0; i < 64; ++i) table[(uint8_t)s[i]] = static_cast<int8_t>(i);
         table['-'] = 62; table['_'] = 63;
         init = true;
     }
@@ -180,21 +177,16 @@ std::string generate_agent_id() {
     DWORD vol_serial = 0;
     GetVolumeInformationW(L"C:\\", nullptr, 0, &vol_serial, nullptr, nullptr, nullptr, 0);
     hw_data.insert(hw_data.end(), (uint8_t*)&vol_serial, (uint8_t*)&vol_serial + 4);
-    
-    IP_ADAPTER_ADDRESSES* adapters = nullptr;
-    ULONG size = 0;
-    GetAdaptersAddresses(AF_UNSPEC, 0, nullptr, adapters, &size);
-    adapters = (IP_ADAPTER_ADDRESSES*)malloc(size);
-    if (GetAdaptersAddresses(AF_UNSPEC, 0, nullptr, adapters, &size) == NO_ERROR) {
-        for (auto* a = adapters; a; a = a->Next) {
-            if (a->PhysicalAddressLength == 6) {
-                hw_data.insert(hw_data.end(), a->PhysicalAddress, a->PhysicalAddress + 6);
-                break;
-            }
-        }
+
+    // Machine identity without winsock: computer name + volume serial + CPU.
+    // GetAdaptersAddresses would drag winsock2.h ahead of windows.h everywhere.
+    wchar_t computer[256] = {};
+    DWORD computer_len = 256;
+    if (GetComputerNameW(computer, &computer_len)) {
+        hw_data.insert(hw_data.end(), (uint8_t*)computer,
+                       (uint8_t*)computer + computer_len * sizeof(wchar_t));
     }
-    free(adapters);
-    
+
     int cpu_info[4] = {0};
     __cpuid(cpu_info, 0);
     hw_data.insert(hw_data.end(), (uint8_t*)cpu_info, (uint8_t*)cpu_info + 16);
@@ -209,6 +201,24 @@ std::string generate_agent_id() {
     BCryptDestroyHash(hHash);
     BCryptCloseAlgorithmProvider(hAlg, 0);
     return base64url_encode(hash).substr(0, 16);
+}
+
+std::vector<uint8_t> sha256(const std::vector<uint8_t>& data) {
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    if (!NT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) return {};
+
+    BCRYPT_HASH_HANDLE hHash = nullptr;
+    BCryptCreateHash(hAlg, &hHash, nullptr, 0, nullptr, 0, 0);
+    BCryptHashData(hHash, (PUCHAR)data.data(), (ULONG)data.size(), 0);
+    std::vector<uint8_t> hash(32);
+    BCryptFinishHash(hHash, hash.data(), 32, 0);
+    BCryptDestroyHash(hHash);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+    return hash;
+}
+
+std::vector<uint8_t> sha256(const std::string& data) {
+    return sha256(std::vector<uint8_t>(data.begin(), data.end()));
 }
 
 } // namespace l4g::crypto

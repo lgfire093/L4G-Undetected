@@ -1,14 +1,13 @@
-#pragma once
+﻿#pragma once
 #include <windows.h>
 #include <vector>
 #include <string>
 #include <mutex>
+#include "types.hpp"
 
 namespace l4g::cheat {
 
-struct Vec3 { float x, y, z; };
-struct Vec2 { float x, y; };
-struct Color { uint8_t r, g, b, a; };
+
 
 struct ItemInfo {
     uint64_t address = 0;
@@ -53,8 +52,8 @@ public:
     void render();
     
     // Drawing primitives
-    virtual void draw_text(const Vec2& pos, const std::string& text, const Color& color, bool centered = true) = 0;
-    virtual void draw_box(const Vec2& top_left, const Vec2& bottom_right, const Color& color, float thickness) = 0;
+    virtual void draw_text(const Vec2& /*pos*/, const std::string& /*text*/, const Color& /*color*/, bool /*centered*/ = true) {}
+    virtual void draw_box(const Vec2& /*top_left*/, const Vec2& /*bottom_right*/, const Color& /*color*/, float /*thickness*/) {}
     
 protected:
     ItemESPConfig config_;
@@ -62,7 +61,7 @@ protected:
     float view_matrix_[16] = {0};
     int screen_width_ = 1920;
     int screen_height_ = 1080;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     
     void render_item(const ItemInfo& item);
     Color get_item_color(const ItemInfo& item) const;

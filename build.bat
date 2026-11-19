@@ -50,6 +50,20 @@ copy /Y "Release\L4G_Panel.exe" "%OUTPUT_DIR%\L4G_Panel.exe" >nul
 echo [OK] Panel built: %OUTPUT_DIR%\L4G_Panel.exe
 
 REM ============================================
+REM 1.5. ENCRYPT PAYLOAD FOR INSTALLER
+REM ============================================
+echo.
+echo [1.5/4] Encrypting payload for installer...
+echo --------------------------------------------
+cd /d "%ROOT%installer"
+powershell -ExecutionPolicy Bypass -File encrypt_payload.ps1
+if errorlevel 1 (
+    echo [WARN] Payload encryption failed
+) else (
+    echo [OK] Payload encrypted: %ROOT%installer\payload.dat
+)
+
+REM ============================================
 REM 2. BUILD DRIVER (C++ Kernel Mode)
 REM ============================================
 echo.

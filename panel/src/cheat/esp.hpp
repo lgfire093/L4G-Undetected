@@ -1,14 +1,13 @@
-#pragma once
+﻿#pragma once
 #include <windows.h>
 #include <vector>
 #include <string>
 #include <mutex>
+#include "types.hpp"
 
 namespace l4g::cheat {
 
-struct Vec3 { float x, y, z; };
-struct Vec2 { float x, y; };
-struct Color { uint8_t r, g, b, a; };
+
 
 struct EntityInfo {
     uint64_t address = 0;
@@ -55,12 +54,13 @@ public:
     void update_entities(const std::vector<EntityInfo>& entities, const float* view_matrix, int width, int height);
     void render();
     
-    // Drawing primitives (to be implemented with overlay)
-    virtual void draw_box(const Vec2& top_left, const Vec2& bottom_right, const Color& color, float thickness) = 0;
-    virtual void draw_line(const Vec2& from, const Vec2& to, const Color& color, float thickness) = 0;
-    virtual void draw_text(const Vec2& pos, const std::string& text, const Color& color, bool centered = true) = 0;
-    virtual void draw_rect_filled(const Vec2& top_left, const Vec2& bottom_right, const Color& color) = 0;
-    virtual void draw_circle(const Vec2& center, float radius, const Color& color, float thickness) = 0;
+    // Drawing primitives. Overlay backends (D3D11/Imgui) override these; the
+    // defaults are no-ops so the module is usable without a renderer attached.
+    virtual void draw_box(const Vec2& /*top_left*/, const Vec2& /*bottom_right*/, const Color& /*color*/, float /*thickness*/) {}
+    virtual void draw_line(const Vec2& /*from*/, const Vec2& /*to*/, const Color& /*color*/, float /*thickness*/) {}
+    virtual void draw_text(const Vec2& /*pos*/, const std::string& /*text*/, const Color& /*color*/, bool /*centered*/ = true) {}
+    virtual void draw_rect_filled(const Vec2& /*top_left*/, const Vec2& /*bottom_right*/, const Color& /*color*/) {}
+    virtual void draw_circle(const Vec2& /*center*/, float /*radius*/, const Color& /*color*/, float /*thickness*/) {}
     
 protected:
     ESPConfig config_;
@@ -68,7 +68,7 @@ protected:
     float view_matrix_[16] = {0};
     int screen_width_ = 1920;
     int screen_height_ = 1080;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     
     void render_entity(const EntityInfo& ent);
     Color get_entity_color(const EntityInfo& ent) const;

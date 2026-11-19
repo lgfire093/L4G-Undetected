@@ -71,19 +71,19 @@ uint64_t Aimbot::find_best_target(const std::vector<uint64_t>& entities, const V
     return best;
 }
 
-bool Aimbot::is_visible(uint64_t entity) {
+bool Aimbot::is_visible(uint64_t /*entity*/) {
     // Ray trace from local player to target
     // Placeholder - would need game-specific implementation
     return true;
 }
 
-Vec3 Aimbot::get_bone_pos(uint64_t entity, int bone_id) {
+Vec3 Aimbot::get_bone_pos(uint64_t /*entity*/, int /*bone_id*/) {
     // Read bone matrix from entity
     // Placeholder
     return {0, 0, 0};
 }
 
-void Aimbot::aim_at(const Vec3& target_pos) {
+void Aimbot::aim_at(const Vec3& /*target_pos*/) {
     // Send mouse input or write to game memory
     // Placeholder
 }

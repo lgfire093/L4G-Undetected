@@ -1,12 +1,31 @@
-#include "ac_neutralizer.hpp"
+﻿#include "ac_neutralizer.hpp"
 #include "byovd.hpp"
 #include "dkom.hpp"
+#include "../utils/syscalls.hpp"
+#include "../utils/nt_defs.hpp"
 #include <windows.h>
 #include <vector>
 #include <string>
 #include <tlhelp32.h>
+#include <stdio.h>
+#include <algorithm>
+
+#pragma comment(lib, "ntdll.lib")
 
 namespace l4g::kernel {
+
+// winternl.h stops short of this member in the user-mode SDK enum.
+static constexpr SYSTEM_INFORMATION_CLASS kSystemModuleInformation =
+    static_cast<SYSTEM_INFORMATION_CLASS>(11);
+
+static std::string narrow(const wchar_t* wide) {
+    if (!wide) return {};
+    int need = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    if (need <= 1) return {};
+    std::string out((size_t)need - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), need, nullptr, nullptr);
+    return out;
+}
 
 const ACNeutralizer::ACDriver ACNeutralizer::KNOWN_AC_DRIVERS[] = {
     {L"BEDaisy.sys", L"\\Device\\BEDaisy", L"BEDaisy", 0, 0, 0},
@@ -25,8 +44,10 @@ ACNeutralizerResult ACNeutralizer::neutralize_all() {
     
     for (size_t i = 0; i < AC_DRIVER_COUNT; ++i) {
         const auto& ac = KNOWN_AC_DRIVERS[i];
-        
-        if (find_driver_base(ac.name, *reinterpret_cast<uint64_t*>(const_cast<wchar_t**>(&ac.name)), *reinterpret_cast<size_t*>(const_cast<wchar_t**>(&ac.device_name)))) {
+
+        uint64_t driver_base = 0;
+        size_t driver_size = 0;
+        if (find_driver_base(ac.name, driver_base, driver_size)) {
             bool ok = false;
             if (wcscmp(ac.name, L"BEDaisy.sys") == 0 || wcscmp(ac.name, L"BEKernel.sys") == 0) {
                 ok = neutralize_battleye();
@@ -41,7 +62,7 @@ ACNeutralizerResult ACNeutralizer::neutralize_all() {
             }
             
             if (ok) {
-                result.neutralized.push_back(std::string(ac.name, ac.name + wcslen(ac.name)));
+                result.neutralized.push_back(narrow(ac.name));
             }
         }
     }
@@ -54,20 +75,28 @@ bool ACNeutralizer::find_driver_base(const wchar_t* name, uint64_t& out_base, si
     // Use NtQuerySystemInformation with SystemModuleInformation
     ULONG len = 0;
     auto& sys = l4g::syscalls::get_syscall_table();
-    sys.NtQuerySystemInformation(SystemModuleInformation, nullptr, 0, &len);
-    
-    std::vector<uint8_t> buffer(len);
-    if (!NT_SUCCESS(sys.NtQuerySystemInformation(SystemModuleInformation, buffer.data(), len, &len))) {
+    if (!sys.NtQuerySystemInformation) return false;
+
+    sys.NtQuerySystemInformation(kSystemModuleInformation, nullptr, 0, &len);
+    if (len == 0) return false;
+
+    std::vector<uint8_t> buffer(len + 0x1000);
+    if (!NT_SUCCESS(sys.NtQuerySystemInformation(kSystemModuleInformation, buffer.data(), (ULONG)buffer.size(), &len))) {
         return false;
     }
-    
-    auto* modules = (PRTL_PROCESS_MODULES)buffer.data();
+
+    char narrow[256] = {};
+    int wide_len = (int)wcslen(name);
+    if (wide_len >= (int)sizeof(narrow)) wide_len = (int)sizeof(narrow) - 1;
+    WideCharToMultiByte(CP_ACP, 0, name, wide_len, narrow, (int)sizeof(narrow) - 1, nullptr, nullptr);
+
+    auto* modules = (PL4G_RTL_PROCESS_MODULES)buffer.data();
     for (ULONG i = 0; i < modules->NumberOfModules; ++i) {
-        auto* mod = &modules->Modules[i];
-        std::string mod_name((char*)mod->FullPathName + mod->OffsetToFileName);
-        if (_stricmp(mod_name.c_str(), std::string(name, name + wcslen(name)).c_str()) == 0) {
-            out_base = (uint64_t)mod->ImageBase;
-            out_size = mod->ImageSize;
+        auto& mod = modules->Modules[i];
+        const char* mod_name = (const char*)mod.FullPathName + mod.OffsetToFileName;
+        if (_stricmp(mod_name, narrow) == 0) {
+            out_base = (uint64_t)mod.ImageBase;
+            out_size = mod.ImageSize;
             return true;
         }
     }
@@ -100,7 +129,7 @@ bool ACNeutralizer::neutralize_detect_ac() {
     return remove_notify_routines(L"detectac.sys") &&
            patch_dispatch_routine(L"detectac.sys") &&
            remove_device_object(L"\\Device\\detectac") &&
-           hide_process_from_ac(GetCurrentProcessId(), L"detectac.sys");
+           hide_process_from_ac((HANDLE)(ULONG_PTR)GetCurrentProcessId(), L"detectac.sys");
 }
 
 bool ACNeutralizer::neutralize_generic_pccheck() {

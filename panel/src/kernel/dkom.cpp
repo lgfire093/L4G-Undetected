@@ -7,8 +7,8 @@
 namespace l4g::kernel {
 
 static DKOM::Offsets g_offsets;
-static uint64_t g_ps_active_process_head = 0;
-static uint64_t g_ps_loaded_module_list = 0;
+uint64_t DKOM::g_ps_active_process_head = 0;
+uint64_t DKOM::g_ps_loaded_module_list = 0;
 
 DKOM::Offsets& DKOM::get_offsets() {
     return g_offsets;
@@ -32,7 +32,7 @@ bool DKOM::derive_offsets() {
     return true;
 }
 
-bool DKOM::read_kernel(uint64_t address, void* buffer, size_t size) {
+bool DKOM::read_kernel(uint64_t /*address*/, void* /*buffer*/, size_t /*size*/) {
     // Requires BYOVD arbitrary read primitive
     // Placeholder - integrate with BYOVD result
     return false;

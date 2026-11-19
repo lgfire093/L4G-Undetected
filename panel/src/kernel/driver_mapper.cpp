@@ -1,6 +1,6 @@
-#include "driver_mapper.hpp"
+﻿#include "driver_mapper.hpp"
 #include "byovd.hpp"
-#include "../../utils/pe_parser.hpp"
+#include "../utils/pe_parser.hpp"
 
 namespace l4g::kernel {
 
@@ -22,7 +22,7 @@ DriverMapResult DriverMapper::map_driver(const std::vector<uint8_t>& driver_data
     
     // Allocate kernel memory for driver
     uint64_t kernel_base = 0;
-    if (!allocate_kernel_memory(parser.get_image_size(), kernel_base)) {
+    if (!allocate_kernel_memory(parser.get_size_of_image(), kernel_base)) {
         result.error = "Kernel allocation failed";
         return result;
     }

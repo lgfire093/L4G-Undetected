@@ -1,0 +1,24 @@
+# Build outputs
+panel/build/
+driver/build/
+output/
+c2_server/node_modules/
+android/.gradle/
+android/build/
+android/app/build/
+
+# Compiler / linker artifacts
+*.obj
+*.pdb
+*.ilk
+*.tlog
+*.exe
+*.dll
+*.sys
+*.apk
+*.lib
+*.exp
+
+# Installer payload is generated, but it is what the one-liner fetches,
+# so it stays tracked.
+!installer/payload.dat

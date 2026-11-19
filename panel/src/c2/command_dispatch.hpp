@@ -4,8 +4,10 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <optional>
 #include <mutex>
-#include "../../utils/crypto.hpp"
+#include <cstdint>
+#include "../utils/crypto.hpp"
 
 namespace l4g::c2 {
 

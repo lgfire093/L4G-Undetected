@@ -5,7 +5,7 @@
 #include <string>
 #include <optional>
 #include <functional>
-#include "../../utils/crypto.hpp"
+#include "../utils/crypto.hpp"
 
 #pragma comment(lib, "winhttp.lib")
 

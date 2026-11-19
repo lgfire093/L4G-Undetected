@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 #include <optional>
-#include "../../utils/pe_parser.hpp"
+#include "../utils/pe_parser.hpp"
 
 namespace l4g::injection {
 

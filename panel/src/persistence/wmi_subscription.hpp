@@ -1,6 +1,10 @@
 #pragma once
 #include <windows.h>
+#include <wbemidl.h>
+#include <comdef.h>
 #include <string>
+
+#pragma comment(lib, "wbemuuid.lib")
 
 namespace l4g::persistence {
 

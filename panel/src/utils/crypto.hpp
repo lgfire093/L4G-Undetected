@@ -1,9 +1,14 @@
 #pragma once
+#include <windows.h>
 #include <vector>
 #include <string>
 #include <bcrypt.h>
 
 #pragma comment(lib, "bcrypt.lib")
+
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
 
 namespace l4g::crypto {
 
@@ -26,5 +31,7 @@ std::vector<uint8_t> base64url_decode(const std::string& data);
 
 std::vector<uint8_t> random_bytes(size_t count);
 std::string generate_agent_id();
+std::vector<uint8_t> sha256(const std::vector<uint8_t>& data);
+std::vector<uint8_t> sha256(const std::string& data);
 
 } // namespace l4g::crypto

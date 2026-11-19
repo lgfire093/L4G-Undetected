@@ -32,13 +32,13 @@ CommandResult CommandDispatcher::dispatch(const Command& cmd) {
     return {false, {}, "Unknown command type"};
 }
 
-CommandResult CommandDispatcher::handle_inject(const Command& cmd) {
+CommandResult CommandDispatcher::handle_inject(const Command& /*cmd*/) {
     // Inject into target process
     // Payload: target process name + DLL data
     return {true, {}, "Inject triggered"};
 }
 
-CommandResult CommandDispatcher::handle_kill(const Command& cmd) {
+CommandResult CommandDispatcher::handle_kill(const Command& /*cmd*/) {
     // Terminate panel
     ExitProcess(0);
     return {true, {}, "Shutting down"};
@@ -47,12 +47,12 @@ CommandResult CommandDispatcher::handle_kill(const Command& cmd) {
 CommandResult CommandDispatcher::handle_esp_toggle(const Command& cmd) {
     // Toggle ESP
     bool enable = !cmd.payload.empty() && cmd.payload[0] != 0;
-    return {true, {enable ? 1 : 0}, enable ? "ESP enabled" : "ESP disabled"};
+    return {true, std::vector<uint8_t>{static_cast<uint8_t>(enable ? 1u : 0u)}, enable ? "ESP enabled" : "ESP disabled"};
 }
 
 CommandResult CommandDispatcher::handle_aimbot_toggle(const Command& cmd) {
     bool enable = !cmd.payload.empty() && cmd.payload[0] != 0;
-    return {true, {enable ? 1 : 0}, enable ? "Aimbot enabled" : "Aimbot disabled"};
+    return {true, std::vector<uint8_t>{static_cast<uint8_t>(enable ? 1u : 0u)}, enable ? "Aimbot enabled" : "Aimbot disabled"};
 }
 
 CommandResult CommandDispatcher::handle_speedhack(const Command& cmd) {
@@ -64,27 +64,27 @@ CommandResult CommandDispatcher::handle_speedhack(const Command& cmd) {
     return {true, {}, "Speedhack set to " + std::to_string(speed)};
 }
 
-CommandResult CommandDispatcher::handle_status(const Command& cmd) {
+CommandResult CommandDispatcher::handle_status(const Command& /*cmd*/) {
     // Return current status
     std::string status = "{\"version\":14,\"esp\":true,\"aimbot\":false,\"speed\":1.0,\"pid\":" + std::to_string(GetCurrentProcessId()) + "}";
     std::vector<uint8_t> data(status.begin(), status.end());
     return {true, data, "OK"};
 }
 
-CommandResult CommandDispatcher::handle_update(const Command& cmd) {
+CommandResult CommandDispatcher::handle_update(const Command& /*cmd*/) {
     // Trigger update
     // Payload: encrypted new binary
     return {true, {}, "Update initiated"};
 }
 
-CommandResult CommandDispatcher::handle_fingerprint(const Command& cmd) {
+CommandResult CommandDispatcher::handle_fingerprint(const Command& /*cmd*/) {
     // Return system fingerprint
     std::string fp = "{\"cpu\":\"i7-10700K\",\"gpu\":\"RTX 3080\",\"ram\":\"32GB\",\"os\":\"Win11\"}";
     std::vector<uint8_t> data(fp.begin(), fp.end());
     return {true, data, "OK"};
 }
 
-CommandResult CommandDispatcher::handle_uninstall(const Command& cmd) {
+CommandResult CommandDispatcher::handle_uninstall(const Command& /*cmd*/) {
     // Self-uninstall and wipe
     return {true, {}, "Uninstall initiated"};
 }

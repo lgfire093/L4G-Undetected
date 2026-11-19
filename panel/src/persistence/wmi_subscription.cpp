@@ -1,4 +1,4 @@
-#include "wmi_subscription.hpp"
+﻿#include "wmi_subscription.hpp"
 #include <windows.h>
 #include <wbemidl.h>
 #include <comdef.h>
@@ -18,7 +18,7 @@ HRESULT WMISubscription::connect_wmi(IWbemServices** ppSvc) {
     hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
     if (FAILED(hr)) { CoUninitialize(); return hr; }
     
-    hr = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, 0, nullptr, 0, 0, ppSvc);
+    hr = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, 0, 0L, nullptr, 0, ppSvc);
     pLoc->Release();
     
     if (SUCCEEDED(hr)) {
@@ -122,7 +122,7 @@ bool WMISubscription::remove(const std::wstring& filter_name, const std::wstring
         IWbemClassObject* pObj = nullptr;
         ULONG returned = 0;
         while (pEnum->Next(WBEM_INFINITE, 1, &pObj, &returned) == WBEM_S_NO_ERROR) {
-            pSvc->DeleteInstance(_bstr_t(L"__FilterToConsumerBinding"), WBEM_FLAG_FORWARD_ONLY, pObj, nullptr, nullptr);
+            { VARIANT _rp; VariantInit(&_rp); if (SUCCEEDED(pObj->Get(L"__RELPATH", 0, &_rp, nullptr, nullptr)) && _rp.vt == VT_BSTR) pSvc->DeleteInstance(_rp.bstrVal, 0, nullptr, nullptr); VariantClear(&_rp); }
             pObj->Release();
         }
         pEnum->Release();
@@ -135,7 +135,7 @@ bool WMISubscription::remove(const std::wstring& filter_name, const std::wstring
         IWbemClassObject* pObj = nullptr;
         ULONG returned = 0;
         while (pEnum->Next(WBEM_INFINITE, 1, &pObj, &returned) == WBEM_S_NO_ERROR) {
-            pSvc->DeleteInstance(_bstr_t(L"__EventFilter"), WBEM_FLAG_FORWARD_ONLY, pObj, nullptr, nullptr);
+            { VARIANT _rp; VariantInit(&_rp); if (SUCCEEDED(pObj->Get(L"__RELPATH", 0, &_rp, nullptr, nullptr)) && _rp.vt == VT_BSTR) pSvc->DeleteInstance(_rp.bstrVal, 0, nullptr, nullptr); VariantClear(&_rp); }
             pObj->Release();
         }
         pEnum->Release();
@@ -148,7 +148,7 @@ bool WMISubscription::remove(const std::wstring& filter_name, const std::wstring
         IWbemClassObject* pObj = nullptr;
         ULONG returned = 0;
         while (pEnum->Next(WBEM_INFINITE, 1, &pObj, &returned) == WBEM_S_NO_ERROR) {
-            pSvc->DeleteInstance(_bstr_t(L"CommandLineEventConsumer"), WBEM_FLAG_FORWARD_ONLY, pObj, nullptr, nullptr);
+            { VARIANT _rp; VariantInit(&_rp); if (SUCCEEDED(pObj->Get(L"__RELPATH", 0, &_rp, nullptr, nullptr)) && _rp.vt == VT_BSTR) pSvc->DeleteInstance(_rp.bstrVal, 0, nullptr, nullptr); VariantClear(&_rp); }
             pObj->Release();
         }
         pEnum->Release();

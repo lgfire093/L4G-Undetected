@@ -1,6 +1,15 @@
 #pragma once
 #include <windows.h>
 #include <winternl.h>
+#include <cstdint>
+
+// CLIENT_ID / PCLIENT_ID / SECTION_INHERIT come from winternl.h. Declaring them
+// again here breaks every TU that includes both.
+
+typedef enum _SECTION_INHERIT {
+    ViewShare = 1,
+    ViewUnmap = 2
+} SECTION_INHERIT;
 
 namespace l4g::syscalls {
 
@@ -11,7 +20,9 @@ using NtWriteVirtualMemory_t = NTSTATUS(NTAPI*)(HANDLE, PVOID, PVOID, SIZE_T, PS
 using NtProtectVirtualMemory_t = NTSTATUS(NTAPI*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
 using NtAllocateVirtualMemory_t = NTSTATUS(NTAPI*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
 using NtFreeVirtualMemory_t = NTSTATUS(NTAPI*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-using NtOpenProcess_t = NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PCLIENT_ID);
+// The SDK's winternl.h stops exporting PCLIENT_ID once ntdef.h has been pulled
+// in, so the OUT parameter is typed void* here and callers pass &CLIENT_ID.
+using NtOpenProcess_t = NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PVOID);
 using NtTerminateProcess_t = NTSTATUS(NTAPI*)(HANDLE, NTSTATUS);
 using NtQueryInformationProcess_t = NTSTATUS(NTAPI*)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 using NtSetInformationProcess_t = NTSTATUS(NTAPI*)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG);

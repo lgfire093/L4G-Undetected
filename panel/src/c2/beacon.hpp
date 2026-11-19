@@ -8,7 +8,7 @@
 #include <functional>
 #include "doh_client.hpp"
 #include "command_dispatch.hpp"
-#include "../../utils/crypto.hpp"
+#include "../utils/crypto.hpp"
 
 namespace l4g::c2 {
 
